@@ -1,0 +1,38 @@
+# Catkin and CMake outputs
+/build/
+/devel/
+/install/
+/logs/
+/CMakeFiles/
+/.catkin_tools/
+
+# Local IDE and assistant settings
+/.vscode/
+/.idea/
+/.claude/
+*.swp
+*~
+
+# Python caches
+**/__pycache__/
+*.py[cod]
+
+# Runtime outputs
+*.bag
+*.pcd
+/src/faster-lio/Log/*
+!/src/faster-lio/Log/.gitkeep
+/src/faster-lio/PCD/*
+!/src/faster-lio/PCD/.gitkeep
+/src/faster_lio_gnss/results/
+
+# UrbanNav is downloaded separately and is not redistributed.
+/data/*
+!/data/README.md
+
+# Optional local comparison packages
+/src/LIO-SAM/
+/src/lio_sam_urbannav/
+
+# OS files
+.DS_Store

@@ -1,0 +1,87 @@
+digraph FasterLioGnss {
+  graph [
+    rankdir=LR,
+    bgcolor="white",
+    pad=0.25,
+    nodesep=0.55,
+    ranksep=0.85,
+    fontname="DejaVu Sans",
+    fontsize=18,
+    label="Faster-LIO + Robust GNSS Pose3 Fusion",
+    labelloc=t
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="DejaVu Sans",
+    fontsize=12,
+    margin="0.18,0.10",
+    penwidth=1.3,
+    color="#334155",
+    fillcolor="#F8FAFC"
+  ];
+  edge [
+    fontname="DejaVu Sans",
+    fontsize=10,
+    color="#64748B",
+    fontcolor="#334155",
+    penwidth=1.4,
+    arrowsize=0.75
+  ];
+
+  lidar [label="3D LiDAR\nPointCloud2", fillcolor="#E0F2FE"];
+  imu [label="Independent IMU\n400 Hz", fillcolor="#DCFCE7"];
+  gnss [label="GNSS / RTK\nNavSatFix", fillcolor="#FEF3C7"];
+
+  frontend [
+    label="Faster-LIO Frontend\nIEKF + iVox mapping",
+    fillcolor="#DBEAFE",
+    penwidth=1.8
+  ];
+  gate [
+    label="GNSS Quality Control\nvariance | speed | innovation\ncontinuous confirmation",
+    fillcolor="#FEF3C7"
+  ];
+  loop [
+    label="Loop Verification\ncandidate search + GICP",
+    fillcolor="#FCE7F3"
+  ];
+
+  graph_state [
+    label="Online iSAM2 Pose3 Graph\nX: pose   V: velocity\nB_imu: IMU bias   B_gnss: GNSS bias",
+    fillcolor="#EDE9FE",
+    penwidth=2.0
+  ];
+
+  odom_factor [label="LIO relative-pose factor", fillcolor="#F1F5F9"];
+  imu_factor [label="IMU preintegration factor", fillcolor="#F1F5F9"];
+  gnss_factor [label="Robust horizontal + height factors", fillcolor="#F1F5F9"];
+  bias_factor [label="GNSS / IMU bias random walk", fillcolor="#F1F5F9"];
+  loop_factor [label="Cauchy robust loop factor", fillcolor="#F1F5F9"];
+
+  output [
+    label="Global 6-DoF State\n10 Hz odometry + TF + path",
+    fillcolor="#D1FAE5",
+    penwidth=1.8
+  ];
+  map [label="Consistent 3D Map", fillcolor="#D1FAE5"];
+
+  lidar -> frontend;
+  imu -> frontend;
+  gnss -> gate;
+  frontend -> odom_factor [label="/Odometry"];
+  imu -> imu_factor [label="/imu/data"];
+  gate -> gnss_factor [label="accepted fixes"];
+  frontend -> loop [label="keyframe clouds"];
+  loop -> loop_factor;
+
+  odom_factor -> graph_state;
+  imu_factor -> graph_state;
+  gnss_factor -> graph_state;
+  bias_factor -> graph_state;
+  loop_factor -> graph_state;
+
+  graph_state -> output;
+  frontend -> map [label="registered cloud"];
+  output -> map [label="global correction"];
+}

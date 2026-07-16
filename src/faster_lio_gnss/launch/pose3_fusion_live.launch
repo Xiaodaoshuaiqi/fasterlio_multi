@@ -1,0 +1,141 @@
+<launch>
+  <!-- Generic causal Pose3 fusion. Sensor drivers and Faster-LIO run elsewhere. -->
+  <arg name="use_sim_time" default="false"/>
+  <arg name="rviz" default="true"/>
+  <arg name="node_name" default="online_pose3_fusion"/>
+
+  <arg name="lio_topic" default="/Odometry"/>
+  <arg name="gnss_topic" default="/gnss/fix"/>
+  <arg name="imu_topic" default="/imu/data"/>
+  <arg name="cloud_topic" default="/velodyne_points"/>
+  <arg name="fused_odometry_topic" default="/odometry/pose3_online"/>
+  <arg name="lio_path_topic" default="/pose3_online/path/lio"/>
+  <arg name="gnss_path_topic" default="/pose3_online/path/gnss"/>
+  <arg name="fused_path_topic" default="/pose3_online/path/fused"/>
+  <arg name="datum_topic" default="/pose3_online/datum"/>
+  <arg name="alignment_status_topic"
+       default="/pose3_online/alignment_ready"/>
+  <arg name="loop_marker_topic" default="/pose3_online/loop_edges"/>
+  <arg name="world_frame" default="gnss_enu_pose3"/>
+  <arg name="odom_frame" default="odom"/>
+
+  <arg name="use_height" default="true"/>
+  <arg name="use_imu" default="true"/>
+  <arg name="use_loop" default="true"/>
+  <arg name="warmup_seconds" default="60.0"/>
+
+  <arg name="antenna_x" default="0.0"/>
+  <arg name="antenna_y" default="-0.86"/>
+  <arg name="antenna_z" default="0.31"/>
+  <arg name="lidar_to_imu_z" default="0.28"/>
+
+  <arg name="gnss_sigma_xy" default="5.0"/>
+  <arg name="gnss_sigma_z" default="2.0"/>
+  <arg name="gnss_bias_rw_xy" default="0.60"/>
+  <arg name="gnss_bias_rw_z" default="0.30"/>
+  <arg name="gnss_bias_prior_xy" default="4.0"/>
+  <arg name="gnss_bias_prior_z" default="8.0"/>
+  <arg name="maximum_horizontal_variance" default="100.0"/>
+  <arg name="imu_lio_velocity_sigma_xy" default="0.0"/>
+  <arg name="imu_lio_velocity_sigma_z" default="1.0"/>
+  <arg name="loop_candidate_radius" default="7.0"/>
+  <arg name="loop_minimum_separation" default="120.0"/>
+  <arg name="loop_spacing" default="15.0"/>
+  <arg name="loop_voxel_size" default="0.80"/>
+  <arg name="loop_max_correspondence" default="6.0"/>
+  <arg name="loop_max_fitness" default="0.50"/>
+  <arg name="loop_max_correction" default="8.0"/>
+  <arg name="loop_rotation_sigma_degrees" default="4.0"/>
+  <arg name="loop_translation_sigma" default="1.0"/>
+  <arg name="loop_vertical_sigma" default="1.5"/>
+  <arg name="loop_cloud_match_tolerance" default="0.25"/>
+  <arg name="loop_cloud_buffer_size" default="500"/>
+
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <node pkg="faster_lio_gnss" type="online_pose3_fusion_node"
+        name="$(arg node_name)" output="screen">
+    <param name="lio_topic" value="$(arg lio_topic)"/>
+    <param name="gnss_topic" value="$(arg gnss_topic)"/>
+    <param name="imu_topic" value="$(arg imu_topic)"/>
+    <param name="cloud_topic" value="$(arg cloud_topic)"/>
+    <param name="fused_odometry_topic"
+           value="$(arg fused_odometry_topic)"/>
+    <param name="lio_path_topic" value="$(arg lio_path_topic)"/>
+    <param name="gnss_path_topic" value="$(arg gnss_path_topic)"/>
+    <param name="fused_path_topic" value="$(arg fused_path_topic)"/>
+    <param name="datum_topic" value="$(arg datum_topic)"/>
+    <param name="alignment_status_topic"
+           value="$(arg alignment_status_topic)"/>
+    <param name="loop_marker_topic" value="$(arg loop_marker_topic)"/>
+    <param name="world_frame" value="$(arg world_frame)"/>
+    <param name="odom_frame" value="$(arg odom_frame)"/>
+
+    <param name="use_height" value="$(arg use_height)"/>
+    <param name="use_imu" value="$(arg use_imu)"/>
+    <param name="use_loop" value="$(arg use_loop)"/>
+    <param name="warmup_seconds" value="$(arg warmup_seconds)"/>
+
+    <param name="antenna_x" value="$(arg antenna_x)"/>
+    <param name="antenna_y" value="$(arg antenna_y)"/>
+    <param name="antenna_z" value="$(arg antenna_z)"/>
+    <param name="lidar_to_imu_z" value="$(arg lidar_to_imu_z)"/>
+
+    <param name="gnss_sigma_xy" value="$(arg gnss_sigma_xy)"/>
+    <param name="gnss_sigma_z" value="$(arg gnss_sigma_z)"/>
+    <param name="gnss_bias_rw_xy" value="$(arg gnss_bias_rw_xy)"/>
+    <param name="gnss_bias_rw_z" value="$(arg gnss_bias_rw_z)"/>
+    <param name="gnss_bias_prior_xy" value="$(arg gnss_bias_prior_xy)"/>
+    <param name="gnss_bias_prior_z" value="$(arg gnss_bias_prior_z)"/>
+    <param name="maximum_horizontal_variance"
+           value="$(arg maximum_horizontal_variance)"/>
+
+    <param name="odom_sigma_xy" value="0.12"/>
+    <param name="odom_sigma_z" value="0.20"/>
+    <param name="odom_sigma_roll_pitch_degrees" value="0.30"/>
+    <param name="odom_sigma_yaw_degrees" value="0.06"/>
+    <param name="huber_k" value="1.0"/>
+    <param name="maximum_speed" value="25.0"/>
+    <param name="maximum_speed_difference" value="6.0"/>
+    <param name="maximum_innovation" value="15.0"/>
+    <param name="maximum_increment_innovation" value="5.0"/>
+    <param name="consecutive_fixes" value="3"/>
+    <param name="path_publish_stride" value="10"/>
+
+    <param name="imu_accel_noise" value="0.10"/>
+    <param name="imu_gyro_noise" value="0.01"/>
+    <param name="imu_accel_bias_rw" value="0.01"/>
+    <param name="imu_gyro_bias_rw" value="0.001"/>
+    <param name="imu_lio_velocity_sigma_xy"
+           value="$(arg imu_lio_velocity_sigma_xy)"/>
+    <param name="imu_lio_velocity_sigma_z"
+           value="$(arg imu_lio_velocity_sigma_z)"/>
+
+    <param name="loop_candidate_radius"
+           value="$(arg loop_candidate_radius)"/>
+    <param name="loop_minimum_separation"
+           value="$(arg loop_minimum_separation)"/>
+    <param name="loop_spacing" value="$(arg loop_spacing)"/>
+    <param name="loop_voxel_size" value="$(arg loop_voxel_size)"/>
+    <param name="loop_max_correspondence"
+           value="$(arg loop_max_correspondence)"/>
+    <param name="loop_max_fitness" value="$(arg loop_max_fitness)"/>
+    <param name="loop_max_correction"
+           value="$(arg loop_max_correction)"/>
+    <param name="loop_rotation_sigma_degrees"
+           value="$(arg loop_rotation_sigma_degrees)"/>
+    <param name="loop_translation_sigma"
+           value="$(arg loop_translation_sigma)"/>
+    <param name="loop_vertical_sigma"
+           value="$(arg loop_vertical_sigma)"/>
+    <param name="loop_cloud_match_tolerance"
+           value="$(arg loop_cloud_match_tolerance)"/>
+    <param name="loop_cloud_buffer_size"
+           value="$(arg loop_cloud_buffer_size)"/>
+  </node>
+
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="pose3_online_rviz"
+          args="-d $(find faster_lio_gnss)/config/pose3_online_visualization.rviz"/>
+  </group>
+</launch>

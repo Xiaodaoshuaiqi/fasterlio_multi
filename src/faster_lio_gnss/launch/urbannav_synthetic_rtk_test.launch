@@ -1,0 +1,118 @@
+<launch>
+  <!-- Fusion upper-bound test using GT plus centimeter Gaussian noise. -->
+  <arg name="bag_file" default="$(env HOME)/bags/test.bag"/>
+  <arg name="ground_truth_file"
+       default="$(find faster_lio_gnss)/../../data/UrbanNav_TST_GT_raw.txt"/>
+  <arg name="evaluation_output"
+       default="$(env HOME)/.ros/faster_lio_gnss/urbannav_synthetic_rtk"/>
+
+  <arg name="sigma_xy" default="0.02"/>
+  <arg name="sigma_z" default="0.04"/>
+  <arg name="noise_seed" default="20260716"/>
+  <arg name="gnss_bias_rw_xy" default="0.01"/>
+  <arg name="gnss_bias_rw_z" default="0.05"/>
+  <arg name="gnss_bias_prior_xy" default="0.05"/>
+  <arg name="gnss_bias_prior_z" default="8.0"/>
+  <arg name="bag_rate" default="1.0"/>
+  <arg name="rviz" default="true"/>
+  <arg name="rviz_delay" default="5.0"/>
+  <arg name="use_sim_time" default="true"/>
+
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <include file="$(find faster_lio)/launch/mapping_velodyne_ulhk.launch">
+    <arg name="rviz" value="false"/>
+  </include>
+
+  <node pkg="faster_lio_gnss" type="synthetic_rtk_replay.py"
+        name="synthetic_rtk_replay" output="screen">
+    <param name="ground_truth_file" value="$(arg ground_truth_file)"/>
+    <param name="fix_topic" value="/gnss/fix"/>
+    <param name="frame_id" value="imu_link"/>
+    <param name="sigma_xy" value="$(arg sigma_xy)"/>
+    <param name="sigma_z" value="$(arg sigma_z)"/>
+    <param name="seed" value="$(arg noise_seed)"/>
+    <param name="publish_delay" value="0.2"/>
+  </node>
+
+  <include file="$(find faster_lio_gnss)/launch/pose3_fusion_live.launch">
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="rviz" value="false"/>
+    <arg name="lio_topic" value="/Odometry"/>
+    <arg name="gnss_topic" value="/gnss/fix"/>
+    <arg name="imu_topic" value="/imu/data"/>
+    <arg name="cloud_topic" value="/velodyne_points"/>
+    <arg name="world_frame" value="gnss_enu_pose3"/>
+    <arg name="odom_frame" value="odom"/>
+    <arg name="use_height" value="true"/>
+    <arg name="use_imu" value="true"/>
+    <arg name="use_loop" value="true"/>
+    <arg name="warmup_seconds" value="60.0"/>
+    <!-- Synthetic RTK is defined directly at the robot reference point. -->
+    <arg name="antenna_x" value="0.0"/>
+    <arg name="antenna_y" value="0.0"/>
+    <arg name="antenna_z" value="0.0"/>
+    <arg name="lidar_to_imu_z" value="0.28"/>
+    <arg name="gnss_sigma_xy" value="$(arg sigma_xy)"/>
+    <arg name="gnss_sigma_z" value="$(arg sigma_z)"/>
+    <arg name="gnss_bias_rw_xy" value="$(arg gnss_bias_rw_xy)"/>
+    <arg name="gnss_bias_rw_z" value="$(arg gnss_bias_rw_z)"/>
+    <arg name="gnss_bias_prior_xy" value="$(arg gnss_bias_prior_xy)"/>
+    <arg name="gnss_bias_prior_z" value="$(arg gnss_bias_prior_z)"/>
+    <arg name="imu_lio_velocity_sigma_xy" value="0.0"/>
+    <arg name="imu_lio_velocity_sigma_z" value="1.0"/>
+    <arg name="maximum_horizontal_variance" value="1.0"/>
+    <arg name="loop_candidate_radius" value="7.0"/>
+    <arg name="loop_minimum_separation" value="120.0"/>
+    <arg name="loop_spacing" value="15.0"/>
+    <arg name="loop_voxel_size" value="0.8"/>
+    <arg name="loop_max_correspondence" value="6.0"/>
+    <arg name="loop_max_fitness" value="0.5"/>
+    <arg name="loop_max_correction" value="8.0"/>
+    <arg name="loop_rotation_sigma_degrees" value="4.0"/>
+    <arg name="loop_translation_sigma" value="1.0"/>
+    <arg name="loop_vertical_sigma" value="1.5"/>
+    <arg name="loop_cloud_match_tolerance" value="0.25"/>
+    <arg name="loop_cloud_buffer_size" value="500"/>
+  </include>
+
+  <node pkg="faster_lio_gnss" type="online_ground_truth_replay.py"
+        name="synthetic_rtk_ground_truth_replay" output="screen">
+    <param name="ground_truth_file" value="$(arg ground_truth_file)"/>
+    <param name="datum_topic" value="/pose3_online/datum"/>
+    <param name="path_topic" value="/pose3_online/path/ground_truth"/>
+    <param name="frame_id" value="gnss_enu_pose3"/>
+    <param name="alignment_status_topic"
+           value="/pose3_online/alignment_ready"/>
+  </node>
+
+  <node pkg="faster_lio_gnss"
+        type="online_pose3_result_evaluator.py"
+        name="synthetic_rtk_result_evaluator" output="screen">
+    <param name="bag_file" value="$(arg bag_file)"/>
+    <param name="alignment_duration" value="60.0"/>
+    <param name="output_directory" value="$(arg evaluation_output)"/>
+    <param name="lio_name" value="Faster-LIO"/>
+    <param name="gnss_name" value="Synthetic-RTK"/>
+    <param name="fused_name" value="Pose3-Synthetic-RTK"/>
+    <param name="lio_path_topic" value="/pose3_online/path/lio"/>
+    <param name="gnss_path_topic" value="/pose3_online/path/gnss"/>
+    <param name="fused_path_topic" value="/pose3_online/path/fused"/>
+    <param name="truth_path_topic"
+           value="/pose3_online/path/ground_truth"/>
+    <param name="settle_seconds" value="3.0"/>
+    <param name="maximum_end_gap" value="2.0"/>
+    <param name="maximum_wait_after_bag" value="60.0"/>
+  </node>
+
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="synthetic_rtk_rviz"
+          launch-prefix="bash -c 'sleep $(arg rviz_delay); exec &quot;$@&quot;' --"
+          args="-d $(find faster_lio_gnss)/config/pose3_online_visualization.rviz"/>
+  </group>
+
+  <node pkg="rosbag" type="play"
+        name="synthetic_rtk_bag_play"
+        args="--quiet --clock --delay=3 --rate=$(arg bag_rate) $(arg bag_file)"
+        output="screen"/>
+</launch>

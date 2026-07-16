@@ -1,0 +1,4 @@
+system,horizontal_rmse_m,vertical_rmse_m,ate_3d_rmse_m,rpe_100m
+Faster-LIO,6.108,20.395,21.290,2.421
+Synthetic-RTK,0.031,0.040,0.050,0.043
+Pose3-Synthetic-RTK,0.066,0.339,0.345,0.043

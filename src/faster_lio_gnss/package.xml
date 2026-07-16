@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>faster_lio_gnss</name>
+  <version>1.0.0</version>
+  <description>Online Faster-LIO, IMU and GNSS Pose3 factor-graph fusion.</description>
+
+  <maintainer email="3454331700@qq.com">xiao</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>roscpp</depend>
+  <depend>nav_msgs</depend>
+  <depend>pcl_conversions</depend>
+  <depend>pcl_ros</depend>
+  <depend>rosbag</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>rospy</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+  <build_depend>libgtsam-dev</build_depend>
+  <build_export_depend>libgtsam-dev</build_export_depend>
+  <exec_depend>libgtsam-dev</exec_depend>
+  <exec_depend>faster_lio</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>rviz</exec_depend>
+
+  <export/>
+</package>

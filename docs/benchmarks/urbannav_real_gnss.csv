@@ -1,0 +1,4 @@
+system,horizontal_rmse_m,vertical_rmse_m,ate_3d_rmse_m,rpe_100m
+Faster-LIO,6.108,20.395,21.290,2.421
+F9P,5.119,5.869,7.788,2.154
+Pose3-Fusion,0.550,1.252,1.368,0.292

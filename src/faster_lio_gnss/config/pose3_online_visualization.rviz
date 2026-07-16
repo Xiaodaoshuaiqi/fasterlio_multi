@@ -1,0 +1,183 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.45
+      Cell Size: 25
+      Class: rviz/Grid
+      Color: 105; 105; 105
+      Enabled: true
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Name: ENU Grid
+      Plane: XY
+      Plane Cell Count: 40
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Alpha: 0.70
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -2
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color Transformer: AxisColor
+      Decay Time: 12
+      Enabled: true
+      Max Color: 255; 70; 70
+      Min Color: 55; 120; 255
+      Name: Faster-LIO 3D Cloud
+      Position Transformer: XYZ
+      Queue Size: 30
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.08
+      Style: Points
+      Topic: /cloud_registered
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 40; 125; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.55
+      Name: Faster-LIO Online
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic: /pose3_online/path/lio
+      Unreliable: false
+      Value: true
+    - Alpha: 0.85
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 70; 70
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.35
+      Name: F9P Online
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic: /pose3_online/path/gnss
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 35; 235; 95
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.9
+      Name: Pose3 iSAM2 Online
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic: /pose3_online/path/fused
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 190; 90; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.75
+      Name: SPAN-CPT Ground Truth
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic: /pose3_online/path/ground_truth
+      Unreliable: false
+      Value: true
+    - Angle Tolerance: 0.1
+      Class: rviz/Odometry
+      Color: 35; 235; 95
+      Enabled: true
+      Keep: 1
+      Name: Pose3 Current Pose
+      Position Tolerance: 0.1
+      Shape:
+        Alpha: 1
+        Axes Length: 2
+        Axes Radius: 0.12
+        Color: 35; 235; 95
+        Head Length: 0.4
+        Head Radius: 0.2
+        Shaft Length: 1
+        Shaft Radius: 0.1
+        Value: Axes
+      Topic: /odometry/pose3_online
+      Unreliable: false
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /pose3_online/loop_edges
+      Name: Accepted Loop Edges
+      Namespaces:
+        pose3_loop_edges: true
+      Queue Size: 100
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 35; 37; 41
+    Default Light: true
+    Fixed Frame: gnss_enu_pose3
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+  Transformation:
+    Current:
+      Class: rviz/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz/ThirdPersonFollower
+      Distance: 160
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Vehicle Follow
+      Near Clip Distance: 0.01
+      Pitch: 0.72
+      Target Frame: imu_link
+      Value: ThirdPersonFollower (rviz)
+      Yaw: 1.57
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 900
+  Hide Left Dock: false
+  Hide Right Dock: true
+  Width: 1440
+  X: 80
+  Y: 80

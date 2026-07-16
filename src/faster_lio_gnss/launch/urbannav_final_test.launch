@@ -1,0 +1,121 @@
+<launch>
+  <!-- Final UrbanNav-HK-Medium-Urban-1 online test and evaluation. -->
+  <arg name="bag_file" default="$(env HOME)/bags/test.bag"/>
+  <arg name="nmea_file"
+       default="$(find faster_lio_gnss)/../../data/UrbanNav-HK-Medium-Urban-1.ublox.f9p.splitter.nmea"/>
+  <arg name="ground_truth_file"
+       default="$(find faster_lio_gnss)/../../data/UrbanNav_TST_GT_raw.txt"/>
+  <arg name="evaluation_output"
+       default="$(env HOME)/.ros/faster_lio_gnss/urbannav_real_gnss"/>
+
+  <arg name="play_bag" default="true"/>
+  <arg name="bag_rate" default="1.0"/>
+  <arg name="rviz" default="true"/>
+  <arg name="rviz_delay" default="5.0"/>
+  <arg name="evaluate_results" default="true"/>
+  <arg name="use_sim_time" default="true"/>
+
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <include file="$(find faster_lio)/launch/mapping_velodyne_ulhk.launch">
+    <arg name="rviz" value="false"/>
+  </include>
+
+  <node pkg="tf2_ros" type="static_transform_publisher"
+        name="final_imu_to_gps"
+        args="0.0 -0.86 0.31 0.0 0.0 0.0 imu_link gps_link"/>
+
+  <node pkg="faster_lio_gnss" type="nmea_replay_node"
+        name="final_nmea_replay" output="screen">
+    <param name="nmea_file" value="$(arg nmea_file)"/>
+    <param name="date_utc" value="2021-05-17"/>
+    <param name="fix_topic" value="/gnss/fix"/>
+    <param name="heading_topic" value="/gnss/course_imu"/>
+    <param name="gps_frame" value="gps_link"/>
+    <param name="base_frame" value="imu_link"/>
+    <param name="accepted_quality" value="2"/>
+    <param name="east_variance" value="25.0"/>
+    <param name="north_variance" value="25.0"/>
+    <param name="up_variance" value="100.0"/>
+    <param name="publish_delay" value="0.2"/>
+  </node>
+
+  <include file="$(find faster_lio_gnss)/launch/pose3_fusion_live.launch">
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="rviz" value="false"/>
+    <arg name="lio_topic" value="/Odometry"/>
+    <arg name="gnss_topic" value="/gnss/fix"/>
+    <arg name="imu_topic" value="/imu/data"/>
+    <arg name="cloud_topic" value="/velodyne_points"/>
+    <arg name="world_frame" value="gnss_enu_pose3"/>
+    <arg name="odom_frame" value="odom"/>
+    <arg name="use_height" value="true"/>
+    <arg name="use_imu" value="true"/>
+    <arg name="use_loop" value="true"/>
+    <arg name="warmup_seconds" value="60.0"/>
+    <arg name="antenna_x" value="0.0"/>
+    <arg name="antenna_y" value="-0.86"/>
+    <arg name="antenna_z" value="0.31"/>
+    <arg name="lidar_to_imu_z" value="0.28"/>
+    <arg name="gnss_sigma_xy" value="5.0"/>
+    <arg name="gnss_sigma_z" value="2.0"/>
+    <arg name="gnss_bias_rw_xy" value="0.60"/>
+    <arg name="gnss_bias_rw_z" value="0.3"/>
+    <arg name="gnss_bias_prior_xy" value="4.0"/>
+    <arg name="gnss_bias_prior_z" value="8.0"/>
+    <arg name="imu_lio_velocity_sigma_xy" value="0.0"/>
+    <arg name="imu_lio_velocity_sigma_z" value="1.0"/>
+    <arg name="maximum_horizontal_variance" value="100.0"/>
+    <arg name="loop_candidate_radius" value="7.0"/>
+    <arg name="loop_minimum_separation" value="120.0"/>
+    <arg name="loop_spacing" value="15.0"/>
+    <arg name="loop_voxel_size" value="0.8"/>
+    <arg name="loop_max_correspondence" value="6.0"/>
+    <arg name="loop_max_fitness" value="0.5"/>
+    <arg name="loop_max_correction" value="8.0"/>
+    <arg name="loop_rotation_sigma_degrees" value="4.0"/>
+    <arg name="loop_translation_sigma" value="1.0"/>
+    <arg name="loop_vertical_sigma" value="1.5"/>
+    <arg name="loop_cloud_match_tolerance" value="0.25"/>
+    <arg name="loop_cloud_buffer_size" value="500"/>
+  </include>
+
+  <node pkg="faster_lio_gnss" type="online_ground_truth_replay.py"
+        name="final_ground_truth_replay" output="screen">
+    <param name="ground_truth_file" value="$(arg ground_truth_file)"/>
+    <param name="datum_topic" value="/pose3_online/datum"/>
+    <param name="path_topic" value="/pose3_online/path/ground_truth"/>
+    <param name="frame_id" value="gnss_enu_pose3"/>
+    <param name="alignment_status_topic"
+           value="/pose3_online/alignment_ready"/>
+  </node>
+
+  <group if="$(arg evaluate_results)">
+    <node pkg="faster_lio_gnss"
+          type="online_pose3_result_evaluator.py"
+          name="final_result_evaluator" output="screen">
+      <param name="bag_file" value="$(arg bag_file)"/>
+      <param name="alignment_duration" value="60.0"/>
+      <param name="output_directory" value="$(arg evaluation_output)"/>
+      <param name="lio_path_topic" value="/pose3_online/path/lio"/>
+      <param name="gnss_path_topic" value="/pose3_online/path/gnss"/>
+      <param name="fused_path_topic" value="/pose3_online/path/fused"/>
+      <param name="truth_path_topic"
+             value="/pose3_online/path/ground_truth"/>
+      <param name="settle_seconds" value="3.0"/>
+      <param name="maximum_end_gap" value="2.0"/>
+      <param name="maximum_wait_after_bag" value="60.0"/>
+    </node>
+  </group>
+
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="final_urbannav_rviz"
+          launch-prefix="bash -c 'sleep $(arg rviz_delay); exec &quot;$@&quot;' --"
+          args="-d $(find faster_lio_gnss)/config/pose3_online_visualization.rviz"/>
+  </group>
+
+  <node if="$(arg play_bag)" pkg="rosbag" type="play"
+        name="final_urbannav_bag_play"
+        args="--clock --delay=3 --rate=$(arg bag_rate) $(arg bag_file)"
+        output="screen"/>
+</launch>
