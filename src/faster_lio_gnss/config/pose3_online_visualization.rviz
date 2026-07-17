@@ -29,11 +29,11 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz/PointCloud2
       Color Transformer: AxisColor
-      Decay Time: 12
+      Decay Time: 3
       Enabled: true
       Max Color: 255; 70; 70
       Min Color: 55; 120; 255
-      Name: Faster-LIO 3D Cloud
+      Name: Faster-LIO Recent Scans
       Position Transformer: XYZ
       Queue Size: 30
       Selectable: true
@@ -41,6 +41,32 @@ Visualization Manager:
       Size (m): 0.08
       Style: Points
       Topic: /cloud_registered
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 0.85
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -2
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color Transformer: AxisColor
+      Decay Time: 0
+      Enabled: true
+      Max Color: 255; 245; 90
+      Min Color: 35; 175; 255
+      Name: Optimized Backend Map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.08
+      Style: Points
+      Topic: /pose3_online/cloud_optimized
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true

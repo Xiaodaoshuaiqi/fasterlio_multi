@@ -34,6 +34,8 @@ Faster-LIO 作为激光惯性前端，在其输出之上构建在线、因果的
 - 融合水平 GNSS、高度、IMU 预积分、LIO 相对位姿和 GICP 回环因子。
 - GNSS 协方差、速度、创新量、增量方向和连续多点门控。
 - 前 60 秒只进行固定局部坐标系到 ENU 坐标系的初始化对齐。
+- 根据每个关键帧优化后的 Pose3 重建后端点云地图，使 GNSS 与回环修正同时
+  更新轨迹和地图。
 - 支持 UrbanNav 真实 F9P 基准测试与厘米级 RTK 上限实验。
 - 支持 RViz 三维可视化，并在 rosbag 播放结束后自动输出 ATE/RPE。
 
@@ -179,6 +181,7 @@ roslaunch faster_lio_gnss pose3_fusion_live.launch
 /pose3_online/path/gnss
 /pose3_online/path/fused
 /pose3_online/loop_edges
+/pose3_online/cloud_optimized
 TF: gnss_enu_pose3 -> odom
 ```
 
@@ -190,7 +193,11 @@ roslaunch faster_lio_gnss pose3_fusion_live.launch \
   cloud_topic:=/lidar/points \
   imu_topic:=/imu/data \
   gnss_topic:=/rtk/fix \
-  antenna_x:=0.0 antenna_y:=-0.86 antenna_z:=0.31
+  antenna_x:=0.0 antenna_y:=-0.86 antenna_z:=0.31 \
+  lidar_to_imu_x:=0.0 lidar_to_imu_y:=0.0 lidar_to_imu_z:=0.28 \
+  lidar_to_imu_roll_degrees:=0.0 \
+  lidar_to_imu_pitch_degrees:=0.0 \
+  lidar_to_imu_yaw_degrees:=0.0
 ```
 
 ### 实际接入要求
@@ -200,8 +207,46 @@ roslaunch faster_lio_gnss pose3_fusion_live.launch \
 - IMU 单位、坐标轴方向和重力方向必须正确；
 - `NavSatFix` 必须提供有效的状态和位置协方差；
 - `antenna_x/y/z` 必须替换为实际 GNSS 天线杆臂；
-- LiDAR 到 IMU 的外参必须经过标定；
+- `lidar_to_imu_x/y/z` 和 `lidar_to_imu_*_degrees` 必须替换为实际
+  LiDAR 到 IMU 的完整平移、旋转外参；
 - 不同传感器和环境需要重新调整 GNSS、IMU 和回环噪声。
+
+## 后端优化地图
+
+后端地图从原始 LiDAR 关键帧重新构建。每帧点云先通过 LiDAR→IMU 外参
+变换到机体坐标系，再使用该关键帧最新的优化 Pose3 投影到全局坐标系：
+
+```text
+原始雷达帧 -> LiDAR到IMU外参 -> 局部关键帧点云
+局部关键帧点云 + 优化Pose3 -> 全局关键帧点云
+全部全局关键帧 -> 合并 + 体素滤波 -> 后端优化地图
+```
+
+因此，这是真正的逐关键帧地图更新，并不是只用最新 `map -> odom` TF
+整体移动 Faster-LIO 地图，也不会修改 Faster-LIO 内部的 iVox 地图。
+
+RViz 中的 `/cloud_registered` 只显示最近几秒的 Faster-LIO 前端扫描。
+完成前 60 秒坐标系初始化后，`/pose3_online/cloud_optimized` 会显示持续
+保留的后端优化地图。系统会按关键帧步长重建地图，检测到回环时立即重建，
+数据停止后自动补一次最终地图。也可以手动触发：
+
+```bash
+rosservice call /online_pose3_fusion/rebuild_optimized_map
+```
+
+主要参数：
+
+| 参数 | 含义 |
+|---|---|
+| `use_optimized_map` | 是否保存关键帧并发布后端地图 |
+| `optimized_map_keyframe_voxel` | 单个关键帧点云的体素分辨率 |
+| `optimized_map_voxel` | 全局合并地图的体素分辨率 |
+| `optimized_map_rebuild_stride` | 普通地图重建间隔，单位为图优化关键帧 |
+| `optimized_map_finalization_delay` | 输入停止多久后发布最终地图 |
+| `optimized_map_max_keyframes` | 每次重建使用的最近关键帧数；`0` 表示全部 |
+
+当前地图关键帧与因子图关键帧一致，即在 GNSS 时间戳附近生成。减小体素
+分辨率会增加细节，同时也会增加内存占用和地图重建时间。
 
 ## 复现 UrbanNav
 

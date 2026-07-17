@@ -34,6 +34,8 @@ factor graph.
   GICP loop factors.
 - GNSS variance, speed, innovation, and consecutive-fix gating.
 - A 60-second initialization window for fixed local-to-ENU alignment.
+- Backend keyframe-map reconstruction using every optimized Pose3, so loop and
+  GNSS corrections update both the trajectory and the published 3D map.
 - Reproducible UrbanNav benchmark and centimeter-RTK upper-bound experiment.
 - RViz visualization and automatic ATE/RPE report generation after bag replay.
 
@@ -163,6 +165,7 @@ Primary outputs:
 /pose3_online/path/gnss
 /pose3_online/path/fused
 /pose3_online/loop_edges
+/pose3_online/cloud_optimized
 TF: gnss_enu_pose3 -> odom
 ```
 
@@ -174,8 +177,52 @@ roslaunch faster_lio_gnss pose3_fusion_live.launch \
   cloud_topic:=/lidar/points \
   imu_topic:=/imu/data \
   gnss_topic:=/rtk/fix \
-  antenna_x:=0.0 antenna_y:=-0.86 antenna_z:=0.31
+  antenna_x:=0.0 antenna_y:=-0.86 antenna_z:=0.31 \
+  lidar_to_imu_x:=0.0 lidar_to_imu_y:=0.0 lidar_to_imu_z:=0.28 \
+  lidar_to_imu_roll_degrees:=0.0 \
+  lidar_to_imu_pitch_degrees:=0.0 \
+  lidar_to_imu_yaw_degrees:=0.0
 ```
+
+## Optimized Backend Map
+
+The map output is rebuilt from raw LiDAR keyframe scans. Each scan is stored in
+the IMU/body frame and reprojected with its latest optimized Pose3:
+
+```text
+raw LiDAR scan -> LiDAR-to-IMU extrinsic -> local keyframe cloud
+local keyframe cloud + optimized Pose3 -> global keyframe cloud
+all global keyframe clouds -> merge + voxel filter -> optimized map
+```
+
+This is a real per-keyframe map update. It does not merely move the original
+Faster-LIO map with the newest `map -> odom` transform, and it does not rewrite
+Faster-LIO's internal iVox map.
+
+RViz shows `/cloud_registered` as a short recent-scan view. After the initial
+alignment window, `/pose3_online/cloud_optimized` contains the persistent
+backend-corrected map. A rebuild is triggered periodically, immediately after
+an accepted loop closure, and once more when input becomes idle. It can also be
+requested manually:
+
+```bash
+rosservice call /online_pose3_fusion/rebuild_optimized_map
+```
+
+Important map parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `use_optimized_map` | Enable keyframe storage and backend map publication |
+| `optimized_map_keyframe_voxel` | Per-keyframe downsampling resolution |
+| `optimized_map_voxel` | Final merged-map downsampling resolution |
+| `optimized_map_rebuild_stride` | Normal rebuild interval in graph keyframes |
+| `optimized_map_finalization_delay` | Idle time before publishing the final map |
+| `optimized_map_max_keyframes` | Number of recent frames retained in a map rebuild; `0` uses all |
+
+Map keyframes currently follow factor-graph keyframes, which are generated at
+GNSS timestamps. Lower voxel sizes improve detail but increase memory and
+rebuild time.
 
 ## Reproduce UrbanNav
 

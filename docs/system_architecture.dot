@@ -64,7 +64,15 @@ digraph FasterLioGnss {
     fillcolor="#D1FAE5",
     penwidth=1.8
   ];
-  map [label="Consistent 3D Map", fillcolor="#D1FAE5"];
+  map_builder [
+    label="Optimized Keyframe Map\nreproject + merge + voxel filter",
+    fillcolor="#CFFAFE",
+    penwidth=1.8
+  ];
+  map [
+    label="Globally Corrected 3D Map\n/pose3_online/cloud_optimized",
+    fillcolor="#D1FAE5"
+  ];
 
   lidar -> frontend;
   imu -> frontend;
@@ -82,6 +90,7 @@ digraph FasterLioGnss {
   loop_factor -> graph_state;
 
   graph_state -> output;
-  frontend -> map [label="registered cloud"];
-  output -> map [label="global correction"];
+  lidar -> map_builder [label="raw keyframe scans"];
+  graph_state -> map_builder [label="optimized Pose3"];
+  map_builder -> map;
 }

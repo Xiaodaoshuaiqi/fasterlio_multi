@@ -17,6 +17,12 @@
   <arg name="rviz" default="true"/>
   <arg name="rviz_delay" default="5.0"/>
   <arg name="use_sim_time" default="true"/>
+  <arg name="use_optimized_map" default="true"/>
+  <arg name="optimized_map_keyframe_voxel" default="0.30"/>
+  <arg name="optimized_map_voxel" default="0.30"/>
+  <arg name="optimized_map_rebuild_stride" default="10"/>
+  <arg name="optimized_map_finalization_delay" default="2.0"/>
+  <arg name="optimized_map_max_keyframes" default="0"/>
 
   <param name="/use_sim_time" value="$(arg use_sim_time)"/>
 
@@ -47,6 +53,7 @@
     <arg name="use_height" value="true"/>
     <arg name="use_imu" value="true"/>
     <arg name="use_loop" value="true"/>
+    <arg name="use_optimized_map" value="$(arg use_optimized_map)"/>
     <arg name="warmup_seconds" value="60.0"/>
     <!-- Synthetic RTK is defined directly at the robot reference point. -->
     <arg name="antenna_x" value="0.0"/>
@@ -74,6 +81,16 @@
     <arg name="loop_vertical_sigma" value="1.5"/>
     <arg name="loop_cloud_match_tolerance" value="0.25"/>
     <arg name="loop_cloud_buffer_size" value="500"/>
+    <arg name="optimized_map_keyframe_voxel"
+         value="$(arg optimized_map_keyframe_voxel)"/>
+    <arg name="optimized_map_voxel"
+         value="$(arg optimized_map_voxel)"/>
+    <arg name="optimized_map_rebuild_stride"
+         value="$(arg optimized_map_rebuild_stride)"/>
+    <arg name="optimized_map_finalization_delay"
+         value="$(arg optimized_map_finalization_delay)"/>
+    <arg name="optimized_map_max_keyframes"
+         value="$(arg optimized_map_max_keyframes)"/>
   </include>
 
   <node pkg="faster_lio_gnss" type="online_ground_truth_replay.py"

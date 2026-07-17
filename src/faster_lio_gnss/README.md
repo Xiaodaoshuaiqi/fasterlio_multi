@@ -47,6 +47,7 @@ Outputs:
 /pose3_online/path/fused
 /pose3_online/loop_edges
 /pose3_online/alignment_ready
+/pose3_online/cloud_optimized
 TF: gnss_enu_pose3 -> odom
 ```
 
@@ -115,6 +116,34 @@ The graph uses:
 The first `warmup_seconds` are used for one fixed local-to-ENU alignment.
 GNSS position factors are enabled only after alignment.
 
+## Optimized Keyframe Map
+
+The node stores raw LiDAR scans as local IMU/body-frame keyframe clouds. After
+each graph update, the map worker snapshots the latest optimized Pose3 values,
+reprojects the keyframes, merges them, applies a global voxel filter, and
+publishes a latched map:
+
+```text
+/pose3_online/cloud_optimized  sensor_msgs/PointCloud2
+frame_id: gnss_enu_pose3
+```
+
+Periodic requests are throttled by `optimized_map_rebuild_stride`. Accepted
+loop closures force an immediate rebuild, while
+`optimized_map_finalization_delay` ensures that the last pending keyframes are
+published after input stops. The worker runs in a background thread, and newer
+requests supersede stale map builds.
+
+Manual rebuild:
+
+```bash
+rosservice call /online_pose3_fusion/rebuild_optimized_map
+```
+
+`/cloud_registered` remains the Faster-LIO front-end output. The optimized map
+does not modify Faster-LIO's internal iVox state; it is reconstructed from
+stored keyframes using backend poses.
+
 ## Important Parameters
 
 ### Frames and Extrinsics
@@ -124,7 +153,8 @@ GNSS position factors are enabled only after alignment.
 | `world_frame` | Global ENU fusion frame |
 | `odom_frame` | Faster-LIO local frame |
 | `antenna_x/y/z` | IMU reference point to GNSS antenna lever arm |
-| `lidar_to_imu_z` | LiDAR-to-IMU vertical translation |
+| `lidar_to_imu_x/y/z` | LiDAR-to-IMU translation |
+| `lidar_to_imu_roll/pitch/yaw_degrees` | LiDAR-to-IMU rotation in degrees |
 
 ### GNSS
 
@@ -148,6 +178,18 @@ GNSS position factors are enabled only after alignment.
 | `loop_max_correction` | Maximum accepted translation correction |
 | `loop_translation_sigma` | Loop translation noise |
 | `loop_rotation_sigma_degrees` | Loop rotation noise |
+
+### Optimized Map
+
+| Parameter | Meaning |
+|---|---|
+| `use_optimized_map` | Enable backend keyframe-map reconstruction |
+| `optimized_map_topic` | Latched optimized map output topic |
+| `optimized_map_keyframe_voxel` | Local keyframe voxel size |
+| `optimized_map_voxel` | Final merged-map voxel size |
+| `optimized_map_rebuild_stride` | Periodic rebuild interval in graph keyframes |
+| `optimized_map_finalization_delay` | Idle time before the final rebuild |
+| `optimized_map_max_keyframes` | Recent frames used per rebuild; `0` means all |
 
 ## Build
 

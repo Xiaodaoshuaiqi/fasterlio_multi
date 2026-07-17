@@ -13,6 +13,7 @@
 #include <gtsam/slam/PriorFactor.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
+#include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -23,6 +24,7 @@
 #include <sensor_msgs/NavSatFix.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <std_msgs/Bool.h>
+#include <std_srvs/Trigger.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
 
@@ -30,10 +32,13 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <condition_variable>
 #include <deque>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -109,6 +114,7 @@ struct Keyframe {
   gtsam::Pose3 initial_pose;
   gtsam::Vector3 initial_velocity = gtsam::Vector3::Zero();
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
+  pcl::PointCloud<pcl::PointXYZI>::Ptr map_cloud;
   bool use_gnss = false;
   bool use_loop = false;
   double innovation = 0.0;
@@ -127,6 +133,17 @@ struct LoopCandidate {
   std::size_t first = 0;
   double distance = 0.0;
   double yaw_difference = 0.0;
+};
+
+struct OptimizedMapFrame {
+  pcl::PointCloud<pcl::PointXYZI>::ConstPtr cloud;
+  gtsam::Pose3 pose;
+};
+
+struct OptimizedMapRequest {
+  std::vector<OptimizedMapFrame> frames;
+  ros::Time stamp;
+  std::size_t generation = 0;
 };
 
 class HorizontalGnssAntennaFactor
@@ -219,7 +236,7 @@ class OnlinePose3Fusion {
       imu_subscriber_ = nh_.subscribe<sensor_msgs::Imu>(
           imu_topic_, 200000, &OnlinePose3Fusion::OnImu, this);
     }
-    if (use_loop_) {
+    if (use_loop_ || use_optimized_map_) {
       cloud_subscriber_ = nh_.subscribe<sensor_msgs::PointCloud2>(
           cloud_topic_, 100, &OnlinePose3Fusion::OnCloud, this);
     }
@@ -239,6 +256,20 @@ class OnlinePose3Fusion {
     loop_marker_publisher_ =
         nh_.advertise<visualization_msgs::Marker>(loop_marker_topic_, 1,
                                                   true);
+    if (use_optimized_map_) {
+      optimized_map_publisher_ =
+          nh_.advertise<sensor_msgs::PointCloud2>(
+              optimized_map_topic_, 1, true);
+      optimized_map_rebuild_service_ = private_nh_.advertiseService(
+          "rebuild_optimized_map",
+          &OnlinePose3Fusion::OnRebuildOptimizedMap, this);
+      optimized_map_finalize_timer_ = nh_.createWallTimer(
+          ros::WallDuration(0.5),
+          &OnlinePose3Fusion::OnOptimizedMapFinalizeTimer, this);
+      optimized_map_worker_ =
+          std::thread(&OnlinePose3Fusion::OptimizedMapWorker, this);
+      PublishEmptyOptimizedMap();
+    }
 
     lio_path_.header.frame_id = world_frame_;
     gnss_path_.header.frame_id = world_frame_;
@@ -252,7 +283,20 @@ class OnlinePose3Fusion {
                                                  << " [height=" << use_height_
                                                  << ", imu=" << use_imu_
                                                  << ", loop=" << use_loop_
+                                                 << ", optimized_map="
+                                                 << use_optimized_map_
                                                  << "]");
+  }
+
+  ~OnlinePose3Fusion() {
+    {
+      std::lock_guard<std::mutex> lock(optimized_map_mutex_);
+      optimized_map_stop_ = true;
+    }
+    optimized_map_condition_.notify_all();
+    if (optimized_map_worker_.joinable()) {
+      optimized_map_worker_.join();
+    }
   }
 
  private:
@@ -278,6 +322,9 @@ class OnlinePose3Fusion {
                                    "/pose3_online/alignment_ready");
     private_nh_.param<std::string>("loop_marker_topic", loop_marker_topic_,
                                    "/pose3_online/loop_edges");
+    private_nh_.param<std::string>(
+        "optimized_map_topic", optimized_map_topic_,
+        "/pose3_online/cloud_optimized");
     private_nh_.param<std::string>("world_frame", world_frame_,
                                    "gnss_enu_pose3");
     private_nh_.param<std::string>("odom_frame", odom_frame_, "odom");
@@ -285,6 +332,7 @@ class OnlinePose3Fusion {
     private_nh_.param<bool>("use_height", use_height_, true);
     private_nh_.param<bool>("use_imu", use_imu_, true);
     private_nh_.param<bool>("use_loop", use_loop_, true);
+    private_nh_.param<bool>("use_optimized_map", use_optimized_map_, true);
     private_nh_.param<double>("warmup_seconds", warmup_seconds_, 60.0);
     private_nh_.param<double>("gnss_sigma_xy", gnss_sigma_xy_, 5.0);
     private_nh_.param<double>("gnss_sigma_z", gnss_sigma_z_, 2.0);
@@ -315,7 +363,15 @@ class OnlinePose3Fusion {
     private_nh_.param<double>("antenna_x", antenna_x_, 0.0);
     private_nh_.param<double>("antenna_y", antenna_y_, -0.86);
     private_nh_.param<double>("antenna_z", antenna_z_, 0.31);
+    private_nh_.param<double>("lidar_to_imu_x", lidar_to_imu_x_, 0.0);
+    private_nh_.param<double>("lidar_to_imu_y", lidar_to_imu_y_, 0.0);
     private_nh_.param<double>("lidar_to_imu_z", lidar_to_imu_z_, 0.28);
+    private_nh_.param<double>("lidar_to_imu_roll_degrees",
+                              lidar_to_imu_roll_degrees_, 0.0);
+    private_nh_.param<double>("lidar_to_imu_pitch_degrees",
+                              lidar_to_imu_pitch_degrees_, 0.0);
+    private_nh_.param<double>("lidar_to_imu_yaw_degrees",
+                              lidar_to_imu_yaw_degrees_, 0.0);
 
     private_nh_.param<double>("imu_accel_noise", imu_accel_noise_, 0.10);
     private_nh_.param<double>("imu_gyro_noise", imu_gyro_noise_, 0.01);
@@ -349,6 +405,25 @@ class OnlinePose3Fusion {
                               loop_cloud_match_tolerance_, 0.25);
     private_nh_.param<int>("loop_cloud_buffer_size",
                            loop_cloud_buffer_size_, 500);
+    private_nh_.param<double>(
+        "optimized_map_keyframe_voxel",
+        optimized_map_keyframe_voxel_, 0.30);
+    private_nh_.param<double>("optimized_map_voxel",
+                              optimized_map_voxel_, 0.30);
+    private_nh_.param<int>("optimized_map_rebuild_stride",
+                           optimized_map_rebuild_stride_, 10);
+    private_nh_.param<double>(
+        "optimized_map_finalization_delay",
+        optimized_map_finalization_delay_, 2.0);
+    private_nh_.param<int>("optimized_map_max_keyframes",
+                           optimized_map_max_keyframes_, 0);
+    lidar_to_imu_pose_ = gtsam::Pose3(
+        gtsam::Rot3::RzRyRx(
+            lidar_to_imu_roll_degrees_ * kPi / 180.0,
+            lidar_to_imu_pitch_degrees_ * kPi / 180.0,
+            lidar_to_imu_yaw_degrees_ * kPi / 180.0),
+        gtsam::Point3(lidar_to_imu_x_, lidar_to_imu_y_,
+                      lidar_to_imu_z_));
   }
 
   void ConfigureNoiseModels() {
@@ -446,6 +521,10 @@ class OnlinePose3Fusion {
     last_imu_stamp_ = ros::Time();
     last_cloud_stamp_ = ros::Time();
     last_loop_stamp_ = ros::Time();
+    optimized_map_dirty_ = false;
+    optimized_map_last_requested_keyframes_ = 0;
+    optimized_map_last_keyframe_wall_time_ = ros::WallTime();
+    InvalidateOptimizedMap();
     ResetIsam();
     PublishAlignmentStatus(false);
     PublishPaths();
@@ -508,7 +587,7 @@ class OnlinePose3Fusion {
   }
 
   void OnCloud(const sensor_msgs::PointCloud2::ConstPtr& message) {
-    if (!use_loop_) {
+    if (!use_loop_ && !use_optimized_map_) {
       return;
     }
     if (!last_cloud_stamp_.isZero() &&
@@ -640,7 +719,7 @@ class OnlinePose3Fusion {
   }
 
   bool CloudMatchWindowReady(const ros::Time& stamp) const {
-    return !use_loop_ ||
+    return (!use_loop_ && !use_optimized_map_) ||
            (!cloud_messages_.empty() &&
             cloud_messages_.back()->header.stamp >=
                 stamp + ros::Duration(loop_cloud_match_tolerance_));
@@ -713,9 +792,19 @@ class OnlinePose3Fusion {
           FindNearestCloud(sample.stamp);
       if (matched_cloud) {
         keyframe.cloud_stamp = matched_cloud->header.stamp;
-        keyframe.cloud = PrepareCloud(*matched_cloud);
+        const pcl::PointCloud<pcl::PointXYZI>::Ptr body =
+            PrepareBodyCloud(*matched_cloud);
+        if (use_loop_) {
+          keyframe.cloud = DownsampleCloud(body, loop_voxel_size_);
+        }
+        if (use_optimized_map_) {
+          keyframe.map_cloud =
+              DownsampleCloud(body, optimized_map_keyframe_voxel_);
+        }
       }
       keyframes_.push_back(keyframe);
+      optimized_map_dirty_ = use_optimized_map_;
+      optimized_map_last_keyframe_wall_time_ = ros::WallTime::now();
       AppendGnssPose(keyframes_.back());
       if (!alignment_ready_) {
         if ((keyframes_.back().gnss.stamp -
@@ -916,6 +1005,7 @@ class OnlinePose3Fusion {
     PublishAlignmentStatus(true);
     BuildAlignedLioPath();
     RebuildFusedPath();
+    ScheduleOptimizedMapRebuild(true);
     BroadcastWorldToOdom(last_lio_stamp_);
     PublishPaths();
     ROS_INFO_STREAM("Initialized online Pose3 iSAM2 after "
@@ -1081,6 +1171,7 @@ class OnlinePose3Fusion {
     latest_correction_ =
         optimized.compose(current.initial_pose.inverse());
     RebuildFusedPath();
+    ScheduleOptimizedMapRebuild(current.use_loop);
     PublishPaths();
     PublishLoopMarkers();
     ROS_INFO_STREAM_THROTTLE(
@@ -1111,7 +1202,7 @@ class OnlinePose3Fusion {
     }
   }
 
-  pcl::PointCloud<pcl::PointXYZI>::Ptr PrepareCloud(
+  pcl::PointCloud<pcl::PointXYZI>::Ptr PrepareBodyCloud(
       const sensor_msgs::PointCloud2& message) const {
     pcl::PointCloud<pcl::PointXYZI>::Ptr raw(
         new pcl::PointCloud<pcl::PointXYZI>());
@@ -1130,16 +1221,36 @@ class OnlinePose3Fusion {
       if (range < 4.0 || range > 70.0) {
         continue;
       }
+      const gtsam::Point3 imu_point = lidar_to_imu_pose_.transformFrom(
+          gtsam::Point3(point.x, point.y, point.z));
       pcl::PointXYZI transformed = point;
-      transformed.z += lidar_to_imu_z_;
+      transformed.x = static_cast<float>(imu_point.x());
+      transformed.y = static_cast<float>(imu_point.y());
+      transformed.z = static_cast<float>(imu_point.z());
       body->push_back(transformed);
     }
+    body->width = body->size();
+    body->height = 1;
+    body->is_dense = false;
+    return body;
+  }
+
+  pcl::PointCloud<pcl::PointXYZI>::Ptr DownsampleCloud(
+      const pcl::PointCloud<pcl::PointXYZI>::ConstPtr& input,
+      double voxel_size) const {
     pcl::PointCloud<pcl::PointXYZI>::Ptr filtered(
         new pcl::PointCloud<pcl::PointXYZI>());
+    if (!input || input->empty()) {
+      return filtered;
+    }
+    if (voxel_size <= 0.0) {
+      *filtered = *input;
+      return filtered;
+    }
     pcl::VoxelGrid<pcl::PointXYZI> voxel;
-    voxel.setLeafSize(loop_voxel_size_, loop_voxel_size_,
-                      loop_voxel_size_);
-    voxel.setInputCloud(body);
+    const float leaf = static_cast<float>(voxel_size);
+    voxel.setLeafSize(leaf, leaf, leaf);
+    voxel.setInputCloud(input);
     voxel.filter(*filtered);
     return filtered;
   }
@@ -1244,6 +1355,171 @@ class OnlinePose3Fusion {
                         keyframes_[second].gnss.stamp)
                            .toSec()
                     << "] s");
+  }
+
+  bool OnRebuildOptimizedMap(std_srvs::Trigger::Request&,
+                             std_srvs::Trigger::Response& response) {
+    if (!use_optimized_map_) {
+      response.success = false;
+      response.message = "optimized map is disabled";
+      return true;
+    }
+    if (!alignment_ready_) {
+      response.success = false;
+      response.message = "factor graph alignment is not ready";
+      return true;
+    }
+    optimized_map_dirty_ = true;
+    const bool scheduled = ScheduleOptimizedMapRebuild(true);
+    response.success = scheduled;
+    response.message =
+        scheduled ? "optimized map rebuild scheduled"
+                  : "no optimized keyframe clouds are available";
+    return true;
+  }
+
+  void OnOptimizedMapFinalizeTimer(const ros::WallTimerEvent&) {
+    if (!use_optimized_map_ || !alignment_ready_ ||
+        !optimized_map_dirty_ ||
+        optimized_map_last_keyframe_wall_time_.isZero()) {
+      return;
+    }
+    const double idle_seconds =
+        (ros::WallTime::now() -
+         optimized_map_last_keyframe_wall_time_)
+            .toSec();
+    if (idle_seconds >= optimized_map_finalization_delay_) {
+      ScheduleOptimizedMapRebuild(true);
+    }
+  }
+
+  bool ScheduleOptimizedMapRebuild(bool force) {
+    if (!use_optimized_map_ || !alignment_ready_) {
+      return false;
+    }
+    const std::size_t keyframe_count = keyframes_.size();
+    const std::size_t stride = static_cast<std::size_t>(
+        std::max(optimized_map_rebuild_stride_, 1));
+    if (!force &&
+        keyframe_count < optimized_map_last_requested_keyframes_ + stride) {
+      return false;
+    }
+
+    const std::size_t maximum_keyframes =
+        optimized_map_max_keyframes_ > 0
+            ? static_cast<std::size_t>(optimized_map_max_keyframes_)
+            : keyframe_count;
+    const std::size_t first =
+        keyframe_count > maximum_keyframes
+            ? keyframe_count - maximum_keyframes
+            : 0;
+    OptimizedMapRequest request;
+    request.stamp =
+        keyframes_.empty() ? ros::Time::now()
+                           : keyframes_.back().gnss.stamp;
+    request.frames.reserve(keyframe_count - first);
+    for (std::size_t i = first; i < keyframe_count; ++i) {
+      if (!keyframes_[i].map_cloud ||
+          keyframes_[i].map_cloud->empty() ||
+          !estimate_.exists(PoseKey(i))) {
+        continue;
+      }
+      request.frames.push_back(
+          {keyframes_[i].map_cloud,
+           estimate_.at<gtsam::Pose3>(PoseKey(i))});
+    }
+    if (request.frames.empty()) {
+      return false;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(optimized_map_mutex_);
+      request.generation = ++optimized_map_generation_;
+      optimized_map_request_ = std::move(request);
+      optimized_map_request_pending_ = true;
+    }
+    optimized_map_last_requested_keyframes_ = keyframe_count;
+    optimized_map_dirty_ = false;
+    optimized_map_condition_.notify_one();
+    return true;
+  }
+
+  void OptimizedMapWorker() {
+    while (true) {
+      OptimizedMapRequest request;
+      {
+        std::unique_lock<std::mutex> lock(optimized_map_mutex_);
+        optimized_map_condition_.wait(
+            lock, [this] {
+              return optimized_map_stop_ ||
+                     optimized_map_request_pending_;
+            });
+        if (optimized_map_stop_) {
+          return;
+        }
+        request = std::move(optimized_map_request_);
+        optimized_map_request_pending_ = false;
+      }
+
+      pcl::PointCloud<pcl::PointXYZI>::Ptr merged(
+          new pcl::PointCloud<pcl::PointXYZI>());
+      std::size_t point_capacity = 0;
+      for (const OptimizedMapFrame& frame : request.frames) {
+        point_capacity += frame.cloud->size();
+      }
+      merged->reserve(point_capacity);
+      for (const OptimizedMapFrame& frame : request.frames) {
+        pcl::PointCloud<pcl::PointXYZI> transformed;
+        pcl::transformPointCloud(
+            *frame.cloud, transformed,
+            frame.pose.matrix().cast<float>());
+        *merged += transformed;
+      }
+
+      const pcl::PointCloud<pcl::PointXYZI>::Ptr filtered =
+          DownsampleCloud(merged, optimized_map_voxel_);
+      sensor_msgs::PointCloud2 message;
+      pcl::toROSMsg(*filtered, message);
+      message.header.stamp = request.stamp;
+      message.header.frame_id = world_frame_;
+
+      {
+        std::lock_guard<std::mutex> lock(optimized_map_mutex_);
+        if (request.generation != optimized_map_generation_ ||
+            optimized_map_stop_) {
+          continue;
+        }
+        optimized_map_publisher_.publish(message);
+      }
+      ROS_INFO_STREAM("Published optimized keyframe map: frames="
+                      << request.frames.size()
+                      << " points=" << filtered->size());
+    }
+  }
+
+  void PublishEmptyOptimizedMap() {
+    if (!use_optimized_map_ || !optimized_map_publisher_) {
+      return;
+    }
+    pcl::PointCloud<pcl::PointXYZI> empty;
+    sensor_msgs::PointCloud2 message;
+    pcl::toROSMsg(empty, message);
+    message.header.stamp = ros::Time::now();
+    message.header.frame_id = world_frame_;
+    optimized_map_publisher_.publish(message);
+  }
+
+  void InvalidateOptimizedMap() {
+    if (!use_optimized_map_) {
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(optimized_map_mutex_);
+      ++optimized_map_generation_;
+      optimized_map_request_pending_ = false;
+      optimized_map_request_ = OptimizedMapRequest();
+    }
+    PublishEmptyOptimizedMap();
   }
 
   void BuildAlignedLioPath() {
@@ -1399,6 +1675,9 @@ class OnlinePose3Fusion {
   ros::Publisher datum_publisher_;
   ros::Publisher alignment_status_publisher_;
   ros::Publisher loop_marker_publisher_;
+  ros::Publisher optimized_map_publisher_;
+  ros::ServiceServer optimized_map_rebuild_service_;
+  ros::WallTimer optimized_map_finalize_timer_;
   tf2_ros::TransformBroadcaster transform_broadcaster_;
 
   std::string lio_topic_;
@@ -1412,12 +1691,14 @@ class OnlinePose3Fusion {
   std::string datum_topic_;
   std::string alignment_status_topic_;
   std::string loop_marker_topic_;
+  std::string optimized_map_topic_;
   std::string world_frame_;
   std::string odom_frame_;
 
   bool use_height_ = true;
   bool use_imu_ = true;
   bool use_loop_ = true;
+  bool use_optimized_map_ = true;
   double warmup_seconds_ = 60.0;
   double gnss_sigma_xy_ = 5.0;
   double gnss_sigma_z_ = 2.0;
@@ -1440,7 +1721,13 @@ class OnlinePose3Fusion {
   double antenna_x_ = 0.0;
   double antenna_y_ = -0.86;
   double antenna_z_ = 0.31;
+  double lidar_to_imu_x_ = 0.0;
+  double lidar_to_imu_y_ = 0.0;
   double lidar_to_imu_z_ = 0.28;
+  double lidar_to_imu_roll_degrees_ = 0.0;
+  double lidar_to_imu_pitch_degrees_ = 0.0;
+  double lidar_to_imu_yaw_degrees_ = 0.0;
+  gtsam::Pose3 lidar_to_imu_pose_;
   double imu_accel_noise_ = 0.10;
   double imu_gyro_noise_ = 0.01;
   double imu_accel_bias_rw_ = 0.01;
@@ -1459,6 +1746,11 @@ class OnlinePose3Fusion {
   double loop_vertical_sigma_ = 1.5;
   double loop_cloud_match_tolerance_ = 0.25;
   int loop_cloud_buffer_size_ = 500;
+  double optimized_map_keyframe_voxel_ = 0.30;
+  double optimized_map_voxel_ = 0.30;
+  int optimized_map_rebuild_stride_ = 10;
+  double optimized_map_finalization_delay_ = 2.0;
+  int optimized_map_max_keyframes_ = 0;
 
   gtsam::SharedNoiseModel odometry_noise_;
   gtsam::SharedNoiseModel pose_prior_noise_;
@@ -1501,6 +1793,17 @@ class OnlinePose3Fusion {
   std::size_t accepted_gnss_count_ = 0;
   std::size_t rejected_gnss_count_ = 0;
   std::size_t path_publish_counter_ = 0;
+
+  std::thread optimized_map_worker_;
+  std::mutex optimized_map_mutex_;
+  std::condition_variable optimized_map_condition_;
+  OptimizedMapRequest optimized_map_request_;
+  bool optimized_map_request_pending_ = false;
+  bool optimized_map_stop_ = false;
+  bool optimized_map_dirty_ = false;
+  std::size_t optimized_map_generation_ = 0;
+  std::size_t optimized_map_last_requested_keyframes_ = 0;
+  ros::WallTime optimized_map_last_keyframe_wall_time_;
 };
 
 int main(int argc, char** argv) {
