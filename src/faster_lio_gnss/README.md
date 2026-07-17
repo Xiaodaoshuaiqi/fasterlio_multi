@@ -15,6 +15,7 @@ in the [repository README](../../README.md).
 | `synthetic_rtk_replay.py` | Ground-truth plus deterministic centimeter noise |
 | `online_ground_truth_replay.py` | Evaluation-only reference path publisher |
 | `online_pose3_result_evaluator.py` | Automatic ATE/RPE report after bag completion |
+| `evaluation_aligned_path_replay.py` | Truth-aligned paths for benchmark RViz only |
 
 Ground truth replay and evaluation nodes are used only by benchmark launch
 files. The live fusion launch has no dependency on ground truth.
@@ -71,6 +72,19 @@ roslaunch faster_lio_gnss urbannav_final_test.launch \
 
 The launch starts Faster-LIO, NMEA replay, Pose3 fusion, truth visualization,
 RViz, rosbag playback, and automatic evaluation.
+
+After the first 60 seconds, the benchmark RViz publishes and displays:
+
+```text
+/pose3_online/path/evaluation_aligned/lio
+/pose3_online/path/evaluation_aligned/gnss
+/pose3_online/path/evaluation_aligned/fused
+/pose3_online/path/evaluation_aligned/ground_truth
+```
+
+These paths use the same fixed initial-window truth alignment as the metric
+report. They are evaluation aids and must not be used as real-robot
+localization outputs.
 
 ### Synthetic Centimeter RTK
 
@@ -162,7 +176,8 @@ source devel/setup.bash
 ```text
 faster_lio_gnss/
 ├── config/
-│   └── pose3_online_visualization.rviz
+│   ├── pose3_online_visualization.rviz
+│   └── pose3_evaluation_aligned_visualization.rviz
 ├── launch/
 │   ├── pose3_fusion_live.launch
 │   ├── urbannav_final_test.launch
@@ -172,6 +187,7 @@ faster_lio_gnss/
 │   ├── trajectory_metrics.py
 │   ├── online_ground_truth_replay.py
 │   ├── online_pose3_result_evaluator.py
+│   ├── evaluation_aligned_path_replay.py
 │   └── synthetic_rtk_replay.py
 └── src/
     ├── nmea_replay_node.cpp

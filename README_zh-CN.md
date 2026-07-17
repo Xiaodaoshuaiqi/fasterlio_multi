@@ -214,6 +214,10 @@ roslaunch faster_lio_gnss urbannav_final_test.launch \
   ground_truth_file:=/path/to/UrbanNav_TST_GT_raw.txt
 ```
 
+数据集测试使用独立的评估版 RViz。系统运行满前 60 秒后，显示节点会应用与
+误差报告完全相同的固定真值 SE(2) 对齐和高度偏移。对齐话题只用于评估显示，
+`pose3_fusion_live.launch` 仍然显示未经真值修正的真实在线输出。
+
 厘米级 RTK 实验：
 
 ```bash
