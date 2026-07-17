@@ -188,11 +188,6 @@ roslaunch faster_lio_gnss urbannav_final_test.launch \
   ground_truth_file:=/path/to/UrbanNav_TST_GT_raw.txt
 ```
 
-The dataset launch uses a dedicated evaluation RViz view. After the first
-60 seconds, it applies the same fixed truth-based SE(2) and vertical alignment
-as the reported metrics. These aligned topics are visualization aids only;
-`pose3_fusion_live.launch` continues to show the unmodified online output.
-
 For the ideal-RTK experiment:
 
 ```bash

@@ -47,7 +47,6 @@ catkin_install_python(PROGRAMS
   scripts/trajectory_metrics.py
   scripts/online_ground_truth_replay.py
   scripts/online_pose3_result_evaluator.py
-  scripts/evaluation_aligned_path_replay.py
   scripts/synthetic_rtk_replay.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

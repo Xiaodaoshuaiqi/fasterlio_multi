@@ -90,21 +90,6 @@
            value="/pose3_online/alignment_ready"/>
   </node>
 
-  <group if="$(arg rviz)">
-    <node pkg="faster_lio_gnss"
-          type="evaluation_aligned_path_replay.py"
-          name="final_evaluation_aligned_paths" output="screen">
-      <param name="alignment_duration" value="60.0"/>
-      <param name="world_frame" value="gnss_enu_pose3"/>
-      <param name="evaluation_frame" value="evaluation_aligned"/>
-      <param name="lio_input_topic" value="/pose3_online/path/lio"/>
-      <param name="gnss_input_topic" value="/pose3_online/path/gnss"/>
-      <param name="fused_input_topic" value="/pose3_online/path/fused"/>
-      <param name="truth_input_topic"
-             value="/pose3_online/path/ground_truth"/>
-    </node>
-  </group>
-
   <group if="$(arg evaluate_results)">
     <node pkg="faster_lio_gnss"
           type="online_pose3_result_evaluator.py"
@@ -126,7 +111,7 @@
   <group if="$(arg rviz)">
     <node pkg="rviz" type="rviz" name="final_urbannav_rviz"
           launch-prefix="bash -c 'sleep $(arg rviz_delay); exec &quot;$@&quot;' --"
-          args="-d $(find faster_lio_gnss)/config/pose3_evaluation_aligned_visualization.rviz"/>
+          args="-d $(find faster_lio_gnss)/config/pose3_online_visualization.rviz"/>
   </group>
 
   <node if="$(arg play_bag)" pkg="rosbag" type="play"
